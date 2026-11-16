@@ -2,6 +2,7 @@ import pygame
 from pygame.locals import *
 from dataclasses import dataclass
 import math
+import random
 
 
 @dataclass
@@ -75,34 +76,49 @@ class Laser:
         # way easier to do one of the corners, also! while here do cos(x) and sin(x) to make more efficient (barely)
 
         length, width = self.size, self.size * 0.25
-        cosine = math.cos(self.angle)
-        sine = math.sin(self.angle)
+        hypotenuse = math.sqrt(length**2 + width ** 2)
+        cosine = 0.5 * hypotenuse * math.cos(-self.angle)
+        sine = 0.5 * hypotenuse * math.sin(-self.angle)
 
         # Our defined pivot points for each triangle
-        top_left = (self.x - 0.5 * width, self.y - 0.5 * length)
-        bottom_right = (self.x + 0.5 * width, self.y + 0.5 * length)
+        right_vertice = (self.x + cosine, self.y - sine)
+        left_vertice = (self.x - cosine, self.y + sine)
 
-        top_vertice = (self.size * math.cos(self.angle) + self.x,
-                         self.size * math.sin(self.angle) + self.y)
-        left_vertice = (self.size * math.cos(self.angle + 2 / 3 * math.pi) + self.x,
-                        1.5 * self.size * math.sin(self.angle + 2 / 3 * math.pi) + self.y)
-        right_vertice = (self.size * math.cos(self.angle - 2 / 3 * math.pi) + self.x,
-                         self.size * math.sin(self.angle - 2 / 3 * math.pi) + self.y)
-        bottom_vertice = (self.size * math.cos(self.angle) - self.x,
-                          self.size * math.sin(self.angle) - self.y)
+        pygame.draw.line(surface, 'white', right_vertice, left_vertice, 1)
+
+    def draw_rect(self, surface):
+
+        # Because I want to draw rectangles at an angle, I can't use draw.rect -- need to draw as two triangles
+        # to make collision detection easier later
+        # I am also going to create a "draw" location -- I prefer to keep (x, y) as its center, but for drawing it's
+        # way easier to do one of the corners, also! while here do cos(x) and sin(x) to make more efficient (barely)
+
+        length, width = self.size, self.size * 0.25
+        hypotenuse = math.sqrt(length**2 + width ** 2)
+        cosine = 0.5 * hypotenuse * math.cos(self.angle + 0/3 * math.pi)
+        sine = 0.5 * hypotenuse * math.sin(self.angle + 0/3 * math.pi)
+
+        # Our defined pivot points for each triangle
+        right_vertice = (self.x + cosine, self.y - sine)
+        left_vertice = (self.x - cosine, self.y + sine)
+        bottom_vertice = (right_vertice[0] + width * math.cos(1/6 * math.pi),
+                          right_vertice[1] + length * math.sin(1/6 * math.pi))
+        top_vertice = (left_vertice[0] - width * math.cos(1/6 * math.pi),
+                       left_vertice[1] - length * math.sin(1/6 * math.pi))
 
 
         # Defining triangles
         vertices_right = [
-            top_vertice, left_vertice, right_vertice
+            right_vertice, bottom_vertice, left_vertice
         ]
 
         vertices_left = [
-            bottom_vertice, left_vertice, right_vertice
+            left_vertice, top_vertice, right_vertice
         ]
 
         pygame.draw.polygon(surface, (0, 255, 0), vertices_right)
         pygame.draw.polygon(surface, (255, 0, 0), vertices_left)
+        pygame.draw.line(surface, 'white', right_vertice, left_vertice, 1)
 
     def rotate(self, angle):
         self.angle += angle
@@ -111,34 +127,78 @@ class Laser:
         self.x += self.velocity * math.cos(self.angle)
         self.y += self.velocity * math.sin(self.angle)
 
+    def should_destroy(self, screen_size: tuple[int, int]) -> bool:
+        if self.x >= screen_size[0] + 50:
+            return True
+        elif self.x <= -50:
+            return True
+        if self.y >= screen_size[1] + 50:
+            return True
+        elif self.y <= -50:
+            return True
+
+        return False
 
 
 
 
 
-
-def draw_all(surface, objects: list):
+def draw_all(surface, ship: 'Ship', lasers: list['Laser']):
     surface.fill('black')
 
-    for item in objects:
+    ship.draw(surface)
+    ship.move(surface.get_size())
+    for item in lasers:
         item.draw(surface)
         item.move(surface.get_size())
 
     pygame.display.update()
+
+def create_lasers(num: int, screen_size: tuple[int, int]) -> list['Laser']:
+
+    # Googled: 'python random float'
+
+    lasers_side = random.choices(range(4), k = num)
+
+    lasers = []
+    for i in range(num):
+        side = lasers_side[i]
+
+        x, y, angle = 0, 0, 0
+        velocity = random.randint(5, 15)
+        if side == 0:
+            x = 0
+            y = random.randint(0, screen_size[1])
+            angle = random.uniform(-math.pi/2, math.pi/2)
+        elif side == 1:
+            x = random.randint(0, screen_size[0])
+            y = 0
+            angle = -random.uniform(-math.pi, 0)
+        elif side == 2:
+            x = screen_size[0]
+            y = random.randint(0, screen_size[1])
+            angle = random.uniform(math.pi / 2, 3 * math.pi / 2)
+        elif side == 3:
+            x = random.randint(0, screen_size[0])
+            y = screen_size[1]
+            angle = -random.uniform(0, math.pi)
+
+        laser = Laser(x, y, angle, velocity, (255, 255, 255))
+        lasers.append(laser)
+
+    return lasers
 
 
 def main():
     pygame.init()
     surface = pygame.display.set_mode((640, 400))
     surface.fill(pygame.Color(0, 0, 0))
-
+    lasers = []
     ship = Ship(10, 320, 200, 0, 0)
-    laser = Laser(400, 300, 0, 0, (255, 255, 255))
-    objects = [ship, laser]
 
     running = True
     while running:
-        draw_all(surface, objects)
+        draw_all(surface, ship, lasers)
 
         for event in pygame.event.get():
             if event.type == QUIT:
@@ -152,14 +212,20 @@ def main():
                     ship.velocity += 1
                 elif event.key == K_s:
                     ship.velocity -= 1
-                elif event.key == K_i:
-                    laser.velocity += 1
-                elif event.key == K_k:
-                    laser.velocity -= 1
-                elif event.key == K_j:
-                    laser.rotate(-0.1 * math.pi)
-                elif event.key == K_l:
-                    laser.rotate(0.1 * math.pi)
+                elif event.key == K_t:
+                    new_lasers = create_lasers(5, surface.get_size())
+                    for new_laser in new_lasers:
+                        lasers.append(new_laser)
+
+        # Remove distant, out of sight lasers
+        remove_lasers = []
+        for laser in lasers:
+            destroy = laser.should_destroy(surface.get_size())
+            if destroy:
+                remove_lasers.append(laser)
+
+        for laser in remove_lasers:
+            lasers.remove(laser)
 
         pygame.time.delay(50)
     pygame.quit()
