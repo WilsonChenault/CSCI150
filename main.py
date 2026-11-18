@@ -18,7 +18,7 @@ class Ship:
     used_dash: bool = False
     used_field: bool = False
 
-    def draw(self, surface):
+    def draw(self, surface, lasers: list):
 
         # Some weird stuff to create an arrowhead shape based on angle
         # Our position gives the circumcenter of the triangle. We can use the angle to determine the location
@@ -37,7 +37,9 @@ class Ship:
                           0.02 * self.radius * math.sin(self.angle) + self.y)
 
         vertices = [front_vertice, left_vertice, bottom_vertice, right_vertice]
-        pygame.draw.polygon(surface, self.color, vertices)
+        ship = pygame.draw.polygon(surface, self.color, vertices)
+
+        return ship
 
     def rotate(self, angle):
         self.angle += angle
@@ -56,8 +58,6 @@ class Ship:
             self.y = screen_size[1]
 
 
-
-
 @dataclass
 class Laser:
 
@@ -66,7 +66,7 @@ class Laser:
     angle: float # Radians
     velocity: float # Pixels/frame
     color: tuple[int, int, int]
-    size: int = 20 # Static but leaving as something that I can easily adjust -- length of long side of rectangle
+    size: int = 10 # Static but leaving as something that I can easily adjust -- length of long side of rectangle
 
     def draw(self, surface):
 
@@ -75,49 +75,13 @@ class Laser:
         # I am also going to create a "draw" location -- I prefer to keep (x, y) as its center, but for drawing it's
         # way easier to do one of the corners, also! while here do cos(x) and sin(x) to make more efficient (barely)
 
-        length, width = self.size, self.size * 0.25
-        hypotenuse = math.sqrt(length**2 + width ** 2)
-        cosine = 0.5 * hypotenuse * math.cos(-self.angle)
-        sine = 0.5 * hypotenuse * math.sin(-self.angle)
+        cosine = self.size * math.cos(-self.angle)
+        sine = self.size * math.sin(-self.angle)
 
         # Our defined pivot points for each triangle
         right_vertice = (self.x + cosine, self.y - sine)
         left_vertice = (self.x - cosine, self.y + sine)
 
-        pygame.draw.line(surface, 'white', right_vertice, left_vertice, 1)
-
-    def draw_rect(self, surface):
-
-        # Because I want to draw rectangles at an angle, I can't use draw.rect -- need to draw as two triangles
-        # to make collision detection easier later
-        # I am also going to create a "draw" location -- I prefer to keep (x, y) as its center, but for drawing it's
-        # way easier to do one of the corners, also! while here do cos(x) and sin(x) to make more efficient (barely)
-
-        length, width = self.size, self.size * 0.25
-        hypotenuse = math.sqrt(length**2 + width ** 2)
-        cosine = 0.5 * hypotenuse * math.cos(self.angle + 0/3 * math.pi)
-        sine = 0.5 * hypotenuse * math.sin(self.angle + 0/3 * math.pi)
-
-        # Our defined pivot points for each triangle
-        right_vertice = (self.x + cosine, self.y - sine)
-        left_vertice = (self.x - cosine, self.y + sine)
-        bottom_vertice = (right_vertice[0] + width * math.cos(1/6 * math.pi),
-                          right_vertice[1] + length * math.sin(1/6 * math.pi))
-        top_vertice = (left_vertice[0] - width * math.cos(1/6 * math.pi),
-                       left_vertice[1] - length * math.sin(1/6 * math.pi))
-
-
-        # Defining triangles
-        vertices_right = [
-            right_vertice, bottom_vertice, left_vertice
-        ]
-
-        vertices_left = [
-            left_vertice, top_vertice, right_vertice
-        ]
-
-        pygame.draw.polygon(surface, (0, 255, 0), vertices_right)
-        pygame.draw.polygon(surface, (255, 0, 0), vertices_left)
         pygame.draw.line(surface, 'white', right_vertice, left_vertice, 1)
 
     def rotate(self, angle):
@@ -127,7 +91,7 @@ class Laser:
         self.x += self.velocity * math.cos(self.angle)
         self.y += self.velocity * math.sin(self.angle)
 
-    def should_destroy(self, screen_size: tuple[int, int]) -> bool:
+    def should_destroy(self, force_field, screen_size: tuple[int, int]) -> bool:
         if self.x >= screen_size[0] + 50:
             return True
         elif self.x <= -50:
@@ -139,18 +103,36 @@ class Laser:
 
         return False
 
+    def collide(self, hitbox: 'pygame.Rect') -> bool:
+        cosine = self.size * math.cos(-self.angle)
+        sine = self.size * math.sin(-self.angle)
 
+        # Our defined pivot points for each triangle
+        right_vertice = (self.x + cosine, self.y - sine)
+        left_vertice = (self.x - cosine, self.y + sine)
+
+        if hitbox.collidepoint(right_vertice) or hitbox.collidepoint(left_vertice):
+            return True
+
+        return False
 
 
 
 def draw_all(surface, ship: 'Ship', lasers: list['Laser']):
     surface.fill('black')
 
-    ship.draw(surface)
-    ship.move(surface.get_size())
-    for item in lasers:
-        item.draw(surface)
-        item.move(surface.get_size())
+    # Handle ship processes -- Return the Rect that the draw command creates and feed it in as hitbox
+    if ship.alive:
+        hitbox = ship.draw(surface, lasers)
+        ship.move(surface.get_size())
+
+
+        for laser in lasers:
+            laser.draw(surface)
+            laser.move(surface.get_size())
+
+            if laser.collide(hitbox):
+                ship.alive = False
 
     pygame.display.update()
 
@@ -220,7 +202,7 @@ def main():
         # Remove distant, out of sight lasers
         remove_lasers = []
         for laser in lasers:
-            destroy = laser.should_destroy(surface.get_size())
+            destroy = laser.should_destroy(1, surface.get_size())
             if destroy:
                 remove_lasers.append(laser)
 
