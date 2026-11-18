@@ -44,6 +44,14 @@ class Ship:
     def rotate(self, angle):
         self.angle += angle
 
+    def accelerate(self, speed: int, speed_factor: float):
+        self.velocity += speed * speed_factor
+
+        if self.velocity > 5 * speed_factor:
+            self.velocity = 5 * speed_factor
+        if self.velocity < -5 * speed_factor:
+            self.velocity = -5 * speed_factor
+
     def move(self, screen_size: tuple[int, int]):
         self.x += self.velocity * math.cos(self.angle)
         self.y += self.velocity * math.sin(self.angle)
@@ -70,15 +78,11 @@ class Laser:
 
     def draw(self, surface):
 
-        # Because I want to draw rectangles at an angle, I can't use draw.rect -- need to draw as two triangles
-        # to make collision detection easier later
-        # I am also going to create a "draw" location -- I prefer to keep (x, y) as its center, but for drawing it's
-        # way easier to do one of the corners, also! while here do cos(x) and sin(x) to make more efficient (barely)
-
+        # Find the endpoints of the laser line using its angle and size
         cosine = self.size * math.cos(-self.angle)
         sine = self.size * math.sin(-self.angle)
 
-        # Our defined pivot points for each triangle
+        # Define points
         right_vertice = (self.x + cosine, self.y - sine)
         left_vertice = (self.x - cosine, self.y + sine)
 
@@ -92,6 +96,7 @@ class Laser:
         self.y += self.velocity * math.sin(self.angle)
 
     def should_destroy(self, force_field, screen_size: tuple[int, int]) -> bool:
+
         if self.x >= screen_size[0] + 50:
             return True
         elif self.x <= -50:
@@ -104,6 +109,7 @@ class Laser:
         return False
 
     def collide(self, hitbox: 'pygame.Rect') -> bool:
+
         cosine = self.size * math.cos(-self.angle)
         sine = self.size * math.sin(-self.angle)
 
@@ -119,6 +125,7 @@ class Laser:
 
 
 def draw_all(surface, ship: 'Ship', lasers: list['Laser']):
+
     surface.fill('black')
 
     # Handle ship processes -- Return the Rect that the draw command creates and feed it in as hitbox
@@ -136,10 +143,9 @@ def draw_all(surface, ship: 'Ship', lasers: list['Laser']):
 
     pygame.display.update()
 
-def create_lasers(num: int, screen_size: tuple[int, int]) -> list['Laser']:
+def create_lasers(num: int, scalar: float, screen_size: tuple[int, int]) -> list['Laser']:
 
     # Googled: 'python random float'
-
     lasers_side = random.choices(range(4), k = num)
 
     lasers = []
@@ -165,18 +171,30 @@ def create_lasers(num: int, screen_size: tuple[int, int]) -> list['Laser']:
             y = screen_size[1]
             angle = -random.uniform(0, math.pi)
 
-        laser = Laser(x, y, angle, velocity, (255, 255, 255))
+        laser = Laser(x, y, angle, velocity * scalar, (255, 255, 255))
         lasers.append(laser)
 
     return lasers
 
+# def cubic_scaling(x: float) -> float:
+#
+
 
 def main():
+
     pygame.init()
     surface = pygame.display.set_mode((640, 400))
     surface.fill(pygame.Color(0, 0, 0))
     lasers = []
     ship = Ship(10, 320, 200, 0, 0)
+
+    # Framerate
+    clock = pygame.Clock
+
+    # Scaling factor; I want fast, instant inputs with no delay. This means that having some delay (say 50 ms) to
+    # every frame is really not conducive to gameplay. So I add a scalar that affects ALL velocities so to slow the game
+    # down. Arbitrarily chosen and tuned
+    speed_factor: float = 0.005
 
     running = True
     while running:
@@ -186,18 +204,35 @@ def main():
             if event.type == QUIT:
                 running = False
             elif event.type == KEYDOWN:
-                if event.key == K_a:
-                    ship.rotate(-0.1 * math.pi)
-                elif event.key == K_d:
-                    ship.rotate(0.1 * math.pi)
-                elif event.key == K_w:
-                    ship.velocity += 1
-                elif event.key == K_s:
-                    ship.velocity -= 1
-                elif event.key == K_t:
-                    new_lasers = create_lasers(5, surface.get_size())
+
+                # if event.key == K_a:
+                #     ship.rotate(-0.1 * math.pi)
+                # elif event.key == K_d:
+                #     ship.rotate(0.1 * math.pi)
+                # elif event.key == K_w:
+                #     ship.velocity += 1 * speed_factor
+                # elif event.key == K_s:
+                #     ship.velocity -= 1 * speed_factor
+                if event.key == K_t:
+                    new_lasers = create_lasers(5, speed_factor, surface.get_size())
                     for new_laser in new_lasers:
                         lasers.append(new_laser)
+                elif event.key == K_y:
+                    new_lasers = create_lasers(50, speed_factor, surface.get_size())
+                    for new_laser in new_lasers:
+                        lasers.append(new_laser)
+
+        keys = pygame.key.get_pressed()
+        if keys[K_a]:
+            ship.rotate(-0.05 * math.pi * speed_factor)
+        if keys[K_d]:
+            ship.rotate(0.05 * math.pi * speed_factor)
+        if keys[K_w]:
+            ship.accelerate(1, speed_factor)
+        if keys[K_s]:
+            ship.accelerate(-1, speed_factor)
+
+
 
         # Remove distant, out of sight lasers
         remove_lasers = []
@@ -209,7 +244,8 @@ def main():
         for laser in remove_lasers:
             lasers.remove(laser)
 
-        pygame.time.delay(50)
+        # print(clock.get_fps())
+
     pygame.quit()
 
 
