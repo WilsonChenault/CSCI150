@@ -44,13 +44,13 @@ class Ship:
     def rotate(self, angle):
         self.angle += angle
 
-    def accelerate(self, speed: int, speed_factor: float):
+    def accelerate(self, speed: float, speed_factor: float):
         self.velocity += speed * speed_factor
 
-        if self.velocity > 5 * speed_factor:
-            self.velocity = 5 * speed_factor
-        if self.velocity < -5 * speed_factor:
-            self.velocity = -5 * speed_factor
+        if self.velocity > 10 * speed_factor:
+            self.velocity = 10 * speed_factor
+        if self.velocity < -10 * speed_factor:
+            self.velocity = -10 * speed_factor
 
     def move(self, screen_size: tuple[int, int]):
         self.x += self.velocity * math.cos(self.angle)
@@ -64,6 +64,10 @@ class Ship:
             self.y = 0
         elif self.y <= 0:
             self.y = screen_size[1]
+
+    def dash(self):
+        self.x += self.velocity * math.cos(self.angle) * 150
+        self.y += self.velocity * math.sin(self.angle) * 150
 
 
 @dataclass
@@ -176,25 +180,40 @@ def create_lasers(num: int, scalar: float, screen_size: tuple[int, int]) -> list
 
     return lasers
 
-# def cubic_scaling(x: float) -> float:
-#
+# Googled: "python how to denote a function has two return values of different types" to make code cleaner
+def initialize_pygame(resolution: tuple[int, int]) -> tuple['pygame.Surface', 'pygame.Clock']:
 
+    pygame.init()
+    surface = pygame.display.set_mode(resolution)
+    surface.fill(pygame.Color(0, 0, 0))
+
+    # Clock to help handle gameplay, especially with getting more difficult over time.
+    # All code was built from documentation at https://www.pygame.org/docs/ref/time.html
+    clock = pygame.time.Clock()
+
+    return surface, clock
+
+def laser_count(difficulty: int) -> int:
+    return difficulty ** 2 * 3 + 5
+
+# Setting up for later.
+def laser_type(difficulty: int) -> list[int]:
+    x = 1
 
 def main():
 
-    pygame.init()
-    surface = pygame.display.set_mode((640, 400))
-    surface.fill(pygame.Color(0, 0, 0))
-    lasers = []
-    ship = Ship(10, 320, 200, 0, 0)
+    resolution: tuple[int, int] = (640, 400)
+    surface, clock = initialize_pygame(resolution)
 
-    # Framerate
-    clock = pygame.Clock
+    # Initialize game parameters
+    lasers = []
+    ship = Ship(10, int(resolution[0] * 0.5), int(resolution[1] * 0.5), 0, 0)
+    difficulty, time = 0, 0 # Time to help handle clock stuff
 
     # Scaling factor; I want fast, instant inputs with no delay. This means that having some delay (say 50 ms) to
     # every frame is really not conducive to gameplay. So I add a scalar that affects ALL velocities so to slow the game
     # down. Arbitrarily chosen and tuned
-    speed_factor: float = 0.005
+    speed_factor: float = 0.075
 
     running = True
     while running:
@@ -205,14 +224,7 @@ def main():
                 running = False
             elif event.type == KEYDOWN:
 
-                # if event.key == K_a:
-                #     ship.rotate(-0.1 * math.pi)
-                # elif event.key == K_d:
-                #     ship.rotate(0.1 * math.pi)
-                # elif event.key == K_w:
-                #     ship.velocity += 1 * speed_factor
-                # elif event.key == K_s:
-                #     ship.velocity -= 1 * speed_factor
+                # Debug keys!
                 if event.key == K_t:
                     new_lasers = create_lasers(5, speed_factor, surface.get_size())
                     for new_laser in new_lasers:
@@ -222,17 +234,20 @@ def main():
                     for new_laser in new_lasers:
                         lasers.append(new_laser)
 
+                # Game keys!
+                elif event.key == K_SPACE:
+                    ship.dash()
+
+
         keys = pygame.key.get_pressed()
         if keys[K_a]:
             ship.rotate(-0.05 * math.pi * speed_factor)
         if keys[K_d]:
             ship.rotate(0.05 * math.pi * speed_factor)
         if keys[K_w]:
-            ship.accelerate(1, speed_factor)
+            ship.accelerate(0.1, speed_factor)
         if keys[K_s]:
-            ship.accelerate(-1, speed_factor)
-
-
+            ship.accelerate(-0.1, speed_factor)
 
         # Remove distant, out of sight lasers
         remove_lasers = []
@@ -244,7 +259,24 @@ def main():
         for laser in remove_lasers:
             lasers.remove(laser)
 
-        # print(clock.get_fps())
+        # Make how many lasers and of what type?
+        # Check if 3 seconds have passed since last tick
+        if time > 3000:
+            time = 0
+
+            count = laser_count(difficulty)
+            new_lasers = create_lasers(count, speed_factor, surface.get_size())
+            for new_laser in new_lasers:
+                lasers.append(new_laser)
+
+
+        # As time goes on, game gets harder
+        time_lived = pygame.time.get_ticks()
+        difficulty = time_lived // 10000 # Game gets harder every 10 seconds
+
+        # Limit framerate to 250 fps
+        pygame.time.delay(4)
+        time += clock.tick() # Tick the clock so it slowly adds up to 3000 ms and then resets in the if statement above
 
     pygame.quit()
 
